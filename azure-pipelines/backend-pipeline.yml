@@ -1,0 +1,88 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - backend/*
+      - azure-pipelines/backend-pipeline.yml
+
+variables:
+  - group: taskapp-variables
+  - name: imageTag
+    value: $(Build.BuildId)
+
+stages:
+
+# ---------------- BUILD ----------------
+- stage: Build
+  jobs:
+  - job: BuildJob
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+
+    - checkout: self
+
+    - task: Docker@2
+      displayName: Login to ACR
+      inputs:
+        command: login
+        containerRegistry: acr-service-connection
+
+    - task: Docker@2
+      displayName: Build Backend Image
+      inputs:
+        command: build
+        repository: $(BACKEND_IMAGE_NAME)
+        dockerfile: backend/Dockerfile
+        buildContext: backend
+        tags: |
+          $(imageTag)
+          latest
+
+    - task: Docker@2
+      displayName: Push Backend Image
+      inputs:
+        command: push
+        repository: $(BACKEND_IMAGE_NAME)
+        tags: |
+          $(imageTag)
+          latest
+
+# ---------------- DEPLOY DEV ----------------
+- stage: DeployDev
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployDevJob
+    environment: development
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - task: AzureWebAppContainer@1
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              appName: $(BACKEND_APP_NAME)
+              containers: '$(DOCKER_REGISTRY)/$(BACKEND_IMAGE_NAME):$(imageTag)'
+
+# ---------------- DEPLOY PROD ----------------
+- stage: DeployProd
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployProdJob
+    environment: production
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - task: AzureWebAppContainer@1
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              appName: $(BACKEND_APP_NAME)
+              containers: '$(DOCKER_REGISTRY)/$(BACKEND_IMAGE_NAME):$(imageTag)'
