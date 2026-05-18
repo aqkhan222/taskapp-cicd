@@ -36,8 +36,8 @@ stages:
       inputs:
         command: build
         repository: $(BACKEND_IMAGE_NAME)
-        dockerfile: Dockerfile
-        buildContext: backend
+        dockerfile: $(Build.SourcesDirectory)/backend/Dockerfile
+        buildContext: $(Build.SourcesDirectory)/backend
         tags: |
           $(imageTag)
           latest
